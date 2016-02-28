@@ -407,7 +407,7 @@ class DRCN:
 		self.net_config = net_config
 		self.ae_config = ae_config
 
-		self.enc_weights = weights
+		self.enc_weights = enc_weights
 
 		self.create_architecture(input_shape, dense_dim=net_config['dense_dim'], 
 			dout=output_dim, dropout=net_config['dropout'])
@@ -415,7 +415,7 @@ class DRCN:
 
 	def create_architecture(self, input_shape, dense_dim=1024, dout=10, dropout=0.5):
 		self.convnet_.create_architecture(input_shape, dout=dout, dropout=dropout, 
-			input_var_=self.X_, output_var_=self.Yout_)
+			input_var_=self.X_, output_var_=self.Yout_, enc_weights=self.enc_weights)
 
 		self.convae_.create_architecture(input_shape, input_var_=self.X_, 
 			output_var_=self.Xout_, convnet_=self.convnet_)
