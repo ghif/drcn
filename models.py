@@ -208,7 +208,8 @@ class ConvNet:
 		self.X_ = T.ftensor4('x')
 		self.Y_ = T.ivector('y')
 
-	def create_architecture(self, input_shape, dense_dim=1024, dout=10, dropout=0.5, input_var_=None, output_var_=None):
+	def create_architecture(self, input_shape, dense_dim=1024, dout=10, dropout=0.5, 
+		input_var_=None, output_var_=None, enc_weights=None):
 		
 		print('[ConvNet: create_architecture]')
 
