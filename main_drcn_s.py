@@ -18,15 +18,17 @@ ae_config = {
 	'batch_size': 128,
 	'denoising': 0.5,
 	'shuffle': False,
-	'loss': 'squared_error'
+	'loss': 'squared_error',
+	'input': 'src'
 }
 
 src = 'svhn'
 tgt = 'mnist'
+model = 'drcn-s'
 
-RESFILE = 'results/'+src+'-'+tgt+'_drcn_results_drop%.1f_aug%d_denoise%.1f_2.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
-PARAMFILE = 'results/'+src+'-'+tgt+'_drcn_weights_drop%.1f_aug%d_denoise%.1f_2.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
-PREDICTPREFIX = src+'-'+tgt+'_drcn_'
+RESFILE = 'results/'+src+'-'+tgt+'_'+model+'_results_drop%.1f_aug%d_denoise%.1f.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
+PARAMFILE = 'results/'+src+'-'+tgt+'_'+model+'_weights_drop%.1f_aug%d_denoise%.1f.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
+PREDICTPREFIX = src+'-'+tgt+'_'+model+'_'
 
 # Load data
 if src == 'svhn':

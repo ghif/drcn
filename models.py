@@ -50,7 +50,10 @@ class ConvAE:
 		self.X_ = T.ftensor4('x')
 		self.Y_ = T.ftensor4('y')
 
-	def create_architecture(self, input_shape, dense_dim=1024, input_var_=None, output_var_=None, convnet_=None):
+	def create_architecture(self, input_shape, dense_dim=1024, input_var_=None, output_var_=None, convnet_=None, 
+		is_enc_fixed=False):
+		
+
 		print('[ConvAE: create_architecture]')
 		if input_var_ is not None:
 			self.X_ = input_var_
@@ -107,6 +110,9 @@ class ConvAE:
 		self.model_ = Conv2DLayerFast(self.lunpool2, 1, (5,5), pad=(2,2), W=GlorotUniform(), nonlinearity=linear)
 
 
+		self.is_enc_fixed = is_enc_fixed
+
+
 	def compile(self, lr=1e-4, loss_function='squared_error'):
 		self.lr = lr
 		print('[ConvAE: compile]')
@@ -114,8 +120,12 @@ class ConvAE:
 
 		Y_pred_ = get_output(self.model_)
 		self.loss_ = self.loss_function(Y_pred_, self.Y_).mean()
+		
 		params_ = lasagne.layers.get_all_params(self.model_, trainable=True)
-		updates_ = rmsprop(self.loss_, params_, learning_rate=self.lr)
+		if self.is_enc_fixed:
+			updates_ = rmsprop(self.loss_, params_[10:len(params_)], learning_rate=self.lr)
+		else:
+			updates_ = rmsprop(self.loss_, params_, learning_rate=self.lr)
 		self.train_fn = theano.function([self.X_, self.Y_], self.loss_, updates=updates_)
 
 		Y_test_pred_ = get_output(self.model_, deterministic=True)
@@ -211,7 +221,7 @@ class ConvNet:
 	def create_architecture(self, input_shape, dense_dim=1024, dout=10, dropout=0.5, 
 		input_var_=None, output_var_=None, enc_weights=None):
 		
-		print('[ConvNet: create_architecture]')
+		print('[ConvNet: create_architecture] dense_dim:', dense_dim)
 
 		if input_var_ is not None:
 			self.X_ = input_var_
@@ -243,6 +253,10 @@ class ConvNet:
 			self.ldense2_drop = DropoutLayer(self.ldense2_drop, p=dropout)
 
 		self.model_ = DenseLayer(self.ldense2_drop, dout, W=GlorotUniform(), nonlinearity=softmax)
+
+		self.enc_weights = enc_weights
+		if enc_weights is not None:
+			lasagne.layers.set_all_param_values(self.model_, enc_weights)
 	
 	def compile(self, lr=1e-4, loss_function='categorical_crossentropy'):
 		self.lr = lr
@@ -408,17 +422,21 @@ class DRCN:
 		self.ae_config = ae_config
 
 		self.enc_weights = enc_weights
+		self.is_enc_fixed = False
+		if self.enc_weights is not None:
+			self.is_enc_fixed = True
 
 		self.create_architecture(input_shape, dense_dim=net_config['dense_dim'], 
 			dout=output_dim, dropout=net_config['dropout'])
 		self.compile(lr_net=net_config['lr'], lr_ae=ae_config['lr'])
 
 	def create_architecture(self, input_shape, dense_dim=1024, dout=10, dropout=0.5):
-		self.convnet_.create_architecture(input_shape, dout=dout, dropout=dropout, 
+		self.convnet_.create_architecture(input_shape, dout=dout, dense_dim=dense_dim, dropout=dropout, 
 			input_var_=self.X_, output_var_=self.Yout_, enc_weights=self.enc_weights)
 
-		self.convae_.create_architecture(input_shape, input_var_=self.X_, 
-			output_var_=self.Xout_, convnet_=self.convnet_)
+		
+		self.convae_.create_architecture(input_shape, input_var_=self.X_, dense_dim=dense_dim,
+			output_var_=self.Xout_, convnet_=self.convnet_, is_enc_fixed=self.is_enc_fixed)
 
 	def compile(self, lr_net=1e-4, lr_ae=1e-4):
 		self.lr_net = lr_net
@@ -523,7 +541,11 @@ class DRCN:
 				X_batch = X_batch.astype('float32')
 				Y_batch = Y_batch.astype('uint8')
 
-				[o1, o2] = self.convnet_.train_fn(X_batch, Y_batch)
+				if self.is_enc_fixed:
+					[o1, o2] = self.convnet_.test_fn(X_batch, Y_batch)
+				else:
+					[o1, o2] = self.convnet_.train_fn(X_batch, Y_batch)
+				
 				loss += o1
 				acc += o2
 
@@ -577,13 +599,12 @@ class DRCN:
 			}
 
 			if RESFILE is not None:
-				
 				pickle.dump(self.res, gzip.open(RESFILE,'wb'))
-
 
 			if epoch % 5 == 0:
 				print('=== > Save weights !')
 				self.save_weights(PARAMFILE)
+		# end epoch
 
 
 

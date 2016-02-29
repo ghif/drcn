@@ -11,8 +11,8 @@ from models import *
 src = 'svhn'
 tgt = 'mnist'
 
-RESFILE = 'results/'+src+'-'+tgt+'_drcn_results_drop0.5_aug0_denoise0.0_2.pkl.gz'
-PARAMFILE = 'results/'+src+'-'+tgt+'_drcn_weights_drop0.5_aug0_denoise0.0_2.pkl.gz'
+RESFILE = 'results/'+src+'-'+tgt+'_drcn_results_drop0.5_aug0_denoise0.4.pkl.gz'
+PARAMFILE = 'results/'+src+'-'+tgt+'_drcn_weights_drop0.5_aug0_denoise0.4.pkl.gz'
 
 
 print('Load data...')
@@ -46,7 +46,7 @@ model = DRCN((c, d1, d2), 10, res['net_config'], res['ae_config'])
 model.load_weights(PARAMFILE)
 
 
-show_filter(X_train[idx_src], grayscale=True, filename='viz/'+src+'_'+tgt+'_drcn_X100-src-orig_2.png')
-show_filter(model.convae_.predict(X_train[idx_src]), grayscale=True, filename='viz/'+src+'_'+tgt+'_drcn_X100-src-pred_2.png')
-show_filter(X_tgt_test[idx_tgt], grayscale=True, filename='viz/'+src+'_'+tgt+'_drcn_X100-tgt-orig_2.png')
-show_filter(model.convae_.predict(X_tgt_test[idx_tgt]), grayscale=True, filename='viz/'+src+'_'+tgt+'_drcn_X100-tgt-pred_2.png')
+show_filter(X_train[idx_src], grayscale=True, filename='viz/'+src+'_'+tgt+'_drcn-fixed_X100-src-orig_denoise0.4.png')
+show_filter(model.convae_.predict(X_train[idx_src]), grayscale=True, filename='viz/'+src+'_'+tgt+'_drcn-fixed_X100-src-pred_denoise0.4.png')
+# show_filter(X_tgt_test[idx_tgt], grayscale=True, filename='viz/'+src+'_'+tgt+'_drcn-fixed_X100-tgt-orig.png')
+# show_filter(model.convae_.predict(X_tgt_test[idx_tgt]), grayscale=True, filename='viz/'+src+'_'+tgt+'_drcn-fixed_X100-tgt-pred.png')

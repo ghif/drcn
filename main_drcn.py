@@ -16,7 +16,7 @@ net_config = {
 ae_config = {
 	'lr': 1e-4,
 	'batch_size': 128,
-	'denoising': 0.5,
+	'denoising': 0.4,
 	'shuffle': False,
 	'loss': 'squared_error'
 }
@@ -24,9 +24,10 @@ ae_config = {
 src = 'svhn'
 tgt = 'mnist'
 
-RESFILE = 'results/'+src+'-'+tgt+'_drcn_results_drop%.1f_aug%d_denoise%.1f_2.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
-PARAMFILE = 'results/'+src+'-'+tgt+'_drcn_weights_drop%.1f_aug%d_denoise%.1f_2.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
+RESFILE = 'results/'+src+'-'+tgt+'_drcn_results_drop%.1f_aug%d_denoise%.1f.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
+PARAMFILE = 'results/'+src+'-'+tgt+'_drcn_weights_drop%.1f_aug%d_denoise%.1f.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
 PREDICTPREFIX = src+'-'+tgt+'_drcn_'
+print(PARAMFILE)
 
 # Load data
 if src == 'svhn':
