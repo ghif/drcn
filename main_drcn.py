@@ -4,24 +4,25 @@ from models import *
 
 net_config = {
 	'lr': 1e-4,
-	'batch_size': 128,
+	'batch_size': 32,
 	'nb_epoch': 50,
-	'augmentation': False,
+	'augmentation': True,
 	'dropout': 0.5,
-	'shuffle': False,
+	'shuffle': True,
 	'dense_dim': 300,
 	'loss': 'categorical_crossentropy'
 }
 
 ae_config = {
 	'lr': 1e-4,
-	'batch_size': 128,
+	'batch_size': 32,
 	'denoising': 0.4,
-	'shuffle': False,
-	'loss': 'squared_error'
+	'shuffle': True,
+	'loss': 'squared_error',
+	'input': 't'
 }
 
-src = 'svhn'
+src = 'usps'
 tgt = 'mnist'
 
 RESFILE = 'results/'+src+'-'+tgt+'_drcn_results_drop%.1f_aug%d_denoise%.1f.pkl.gz' % (net_config['dropout'], net_config['augmentation'], ae_config['denoising'])
@@ -34,8 +35,17 @@ if src == 'svhn':
 	(X_train, Y_train), (X_test, Y_test) = load_svhn()
 	(_, _), (_, _), (X_tgt_test, Y_tgt_test) = load_mnist32x32()
 elif src == 'mnist':
-	(X_train, Y_train), (_, _), (X_test, Y_test) = load_mnist32x32()
-	(_, _), (X_tgt_test, Y_tgt_test) = load_svhn()
+	if tgt == 'svhn':
+		(X_train, Y_train), (_, _), (X_test, Y_test) = load_mnist32x32()
+		(_, _), (X_tgt_test, Y_tgt_test) = load_svhn()
+	else:
+		(X_train, Y_train), (_, _), (X_test, Y_test) = load_mnist()
+		(_, _), (X_tgt_test, Y_tgt_test) = load_usps()
+
+elif src == 'usps':
+	(X_train, Y_train), (X_test, Y_test) = load_usps()
+	(_, _), (_, _), (X_tgt_test, Y_tgt_test) = load_mnist()
+
 
 
 print('Preprocess data ...')

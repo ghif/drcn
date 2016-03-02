@@ -508,6 +508,13 @@ class DRCN:
 
 		total_batches_ae = X_tgt.shape[0] / self.ae_config['batch_size']
 
+		if self.ae_config['input'] == 's':
+			X_ae = np.copy(X)
+		elif self.ae_config['input'] == 't':
+			X_ae = np.copy(X_tgt)
+		elif self.ae_config['input'] == 'st':
+			X_ae = np.concatenate([X, X_tgt])
+
 		
 		for epoch in range(self.net_config['nb_epoch']):
 
@@ -515,7 +522,9 @@ class DRCN:
 			start_time = time.time()
 			loss_ae = 0
 			nbatch = 0
-			for X_batch, Y_batch in gdatagen.flow(X_tgt, np.copy(X_tgt), batch_size=self.ae_config['batch_size'], shuffle=self.ae_config['shuffle']):
+
+			# print('AE training : ',X_ae.shape)
+			for X_batch, Y_batch in gdatagen.flow(X_ae, np.copy(X_ae), batch_size=self.ae_config['batch_size'], shuffle=self.ae_config['shuffle']):
 				if self.ae_config['denoising'] > 0.:
 					X_batch = get_corrupted_output(X_batch, corruption_level=self.ae_config['denoising']).astype('float32')
 				else:
@@ -601,7 +610,7 @@ class DRCN:
 			if RESFILE is not None:
 				pickle.dump(self.res, gzip.open(RESFILE,'wb'))
 
-			if epoch % 5 == 0:
+			if epoch % 10 == 0:
 				print('=== > Save weights !')
 				self.save_weights(PARAMFILE)
 		# end epoch

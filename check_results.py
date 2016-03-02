@@ -5,13 +5,15 @@ import gzip
 src = 'svhn'
 tgt = 'mnist'
 datapair = src+'-'+tgt
-model = 'drcn'
+# model = 'convnet'
+model = 'drcn-st'
 dropout_rate = 0.5
-is_aug = 0
-denoising = 0.4
+is_aug = 1
+denoising = 0.5
 
 RESFILE = 'results/'+datapair+'_'+model+'_results_drop%.1f_aug%d_denoise%.1f.pkl.gz' % (dropout_rate, is_aug, denoising)
-# RESFILE = 'results/'+datapair+'_'+model+'_results_drop%.1f_aug%d.pkl.gz' % (dropout_rate, is_aug)
+# RESFILE = 'results/'+datapair+'_'+model+'_results_drop%.1f_aug%d_h300.pkl.gz' % (dropout_rate, is_aug)
+
 print(RESFILE)
 res = pickle.load(gzip.open(RESFILE,'rb'))
 
