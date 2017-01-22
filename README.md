@@ -22,7 +22,7 @@ To run the experiment with SVHN as the source domain and MNIST as the target dom
 python main_sm.py
 ```
 
-The core algorithm is implemented in drcn.py.
+The core algorithm is implemented in *drcn.py*.
 
 ## Notes
 
