@@ -17,6 +17,12 @@ Muhammad Ghifary (mghifary@gmail.com)
 * h5py
 
 ## Usage
+To run the experiment with SVHN as the source domain and MNIST as the target domain
+```
+python main_sm.py
+```
+
+The core algorithm is implemented in drcn.py.
 
 
 ## TO DO
