@@ -17,7 +17,7 @@ Muhammad Ghifary (mghifary@gmail.com)
 * h5py
 
 ## Usage
-To run the experiment with SVHN as the source domain and MNIST as the target domain
+To run the experiment with the (grayscaled) SVHN dataset as the source domain and the MNIST dataset as the target domain
 ```
 python main_sm.py
 ```
