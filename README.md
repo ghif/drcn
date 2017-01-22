@@ -24,6 +24,8 @@ python main_sm.py
 
 The core algorithm is implemented in drcn.py.
 
+## Notes
+
 
 ## TO DO
 * Data augmentation and denoising
