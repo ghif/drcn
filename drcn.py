@@ -1,9 +1,10 @@
 from keras.models import Model
 from keras.layers import Input, Flatten
-from keras.layers.convolutional import Convolution2D, MaxPooling2D, AveragePooling2D, Deconvolution2D, UpSampling2D
+from keras.layers.convolutional import Conv2D, MaxPooling2D, AveragePooling2D, Conv2DTranspose, UpSampling2D
+from keras.layers.pooling import MaxPooling2D
 from keras.layers.core import Activation, Dropout, Dense, Reshape
 from keras.layers.normalization import BatchNormalization
-from keras.optimizers import Adam, RMSprop
+from keras.optimizers import Adam, RMSprop, Nadam
 
 import os
 import numpy as np
@@ -11,7 +12,9 @@ import time
 
 from myutils import *
 
-def iterate_minibatches(inputs, targets, batchsize, shuffle=False):
+from keras import backend as K
+
+def iterate_minibatches(inputs, targets, batchsize, shuffle=True):
 	assert len(inputs) == len(targets)
 
 	if shuffle:
@@ -50,42 +53,54 @@ def save_weights(model, PARAMDIR, CONF):
 
 	open(CONFPATH, 'wb').write(archjson)
 
+
+def clip_relu(x):
+	y = K.maximum(x, 0)
+	return K.minimum(y, 1)
+
 class DRCN(object):
 	def __init__(self, name='svhn-mnist'):
 		self.name = name
 
 	def create_model(self, input_shape=(1, 32, 32), dy=10, nb_filters=[64, 128], kernel_size=(3, 3), pool_size=(2, 2), 
-		dropout=0.5, output_activation='softmax'):
+		dropout=0.5, output_activation='softmax', opt='adam'):
+		
+		[d1, d2, c] = input_shape
+
+		if opt == 'adam':
+			opt = Adam(lr=3e-4)
+		elif opt == 'rmsprop':
+			opt = RMSprop(lr=1e-4)
+
 
 		_input = Input(shape=input_shape)
 		
 		_h = _input
-		for nf in nb_filters:
-			_h = Convolution2D(nf, kernel_size[0], kernel_size[1], border_mode='same', subsample=(2, 2))(_h)
-			# _h = Convolution2D(nf, kernel_size[0], kernel_size[1], border_mode='same')(_h)			
+		print('input_shape : ', input_shape)
+		print('kernel_size: ', kernel_size)
+		for i, nf in enumerate(nb_filters):
+			_h = Conv2D(nf, kernel_size, padding='same')(_h)
 			_h = BatchNormalization()(_h)
 			_h = Activation('relu')(_h)			
 			_h = Dropout(dropout)(_h)
+			_h = MaxPooling2D(pool_size=pool_size, padding='same')(_h)
 
 		# _h = AveragePooling2D(pool_size=pool_size)(_h)
 		# _h = MaxPooling2D(pool_size=pool_size)(_h)
-
-			
+		
 		_h = Flatten()(_h)
 		
-
 		_h = Dense(1000)(_h)
 		_h = BatchNormalization()(_h)
 		_feat = Activation('relu')(_h)
 		
 		_h = Dropout(dropout)(_feat)
 
-
 		_y = Dense(dy, activation=output_activation)(_feat)
 
 		# convnet
 		self.convnet_model = Model(input=_input, output=_y)
-		self.convnet_model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=3e-4))
+		self.convnet_model.compile(loss='categorical_crossentropy', optimizer=opt)
 
 		# shared features
 		self.feat_model = Model(input=_input, output=_feat)
@@ -95,25 +110,26 @@ class DRCN(object):
 		# conv autoencoder
 		dim = 4
 		_xdec = Dense(3200, activation='relu')(_feat)
-		_xdec = Reshape((nb_filters[-1], dim, dim))(_xdec)
+		# _xdec = Reshape((nb_filters[-1], dim, dim))(_xdec)
+		_xdec = Reshape((dim, dim, nb_filters[-1]))(_xdec)
 		for nf in reversed(nb_filters):
-			dim *= 2
-			_xdec = Deconvolution2D(nf, kernel_size[0], kernel_size[1], (None, nf, dim, dim), subsample=(2, 2), border_mode='same')(_xdec)
-			# _xdec = UpSampling2D()(_xdec)
-
+			# _xdec = Conv2DTranspose(nf, kernel_size, padding='same', subsample=(2, 2))(_xdec)
+			_xdec = Conv2D(nf, kernel_size, padding='same')(_xdec)
+			
 			# _xdec = Convolution2D(nf, kernel_size[0], kernel_size[1], border_mode='same')(_xdec)
 
 			_xdec = BatchNormalization()(_xdec)
 			_xdec = Activation('relu')(_xdec)
 			# _xdec = Dropout(dropout)(_xdec)
-
-			
+			_xdec = UpSampling2D(size=pool_size)(_xdec)
 
 		# _xdec = Deconvolution2D(1, kernel_size[0], kernel_size[1], (None, 1, 32, 32), subsample=(2, 2), border_mode='same', activation='tanh')(_xdec)
-		_xdec = Convolution2D(1, kernel_size[0], kernel_size[1], border_mode='same', activation='sigmoid')(_xdec)
+	 	# _xdec = Conv2DTranspose(1, kernel_size, padding='same', activation=clip_relu)(_xdec)
+		_xdec = Conv2D(c, kernel_size, padding='same', activation=clip_relu)(_xdec)
 
 		self.convae_model = Model(input=_input, output=_xdec)
-		self.convae_model.compile(loss='mse', optimizer=Adam(lr=3e-4))
+				
+		self.convae_model.compile(loss='mse', optimizer=opt)
 
 		print(self.convae_model.summary())
 	
@@ -261,25 +277,31 @@ class DRCN(object):
 
 			# visualization 
 			if validation_data is not  None:
-				Xt = validation_data
-				Xt = postprocess_images(Xt, omin=-1, omax=1)
+				Xtv = validation_data
+				Xt = postprocess_images(Xtv, omin=0, omax=1)
 				imgfile = '%s_tgt.png' % CONF
+				Xt = np.reshape(Xt, (len(Xt), Xt.shape[3], Xt.shape[1], Xt.shape[2]))
+
 				show_images(Xt, filename=imgfile)
 				
-				Xt_pred = self.convae_model.predict(Xt)
-				Xt_pred = postprocess_images(Xt_pred, omin=-1, omax=1)
+				Xt_pred = self.convae_model.predict(Xtv)
+				Xt_pred = postprocess_images(Xt_pred, omin=0, omax=1)
 				imgfile = '%s_tgt_pred.png' % CONF
+
+				Xt_pred = np.reshape(Xt_pred, (len(Xt_pred), Xt_pred.shape[3], Xt_pred.shape[1], Xt_pred.shape[2]))
 				show_images(Xt_pred, filename=imgfile)
 
 			if test_data is not  None:
-				Xs = test_data
-				Xs = postprocess_images(Xs, omin=-1, omax=1)
+				Xsv = test_data
+				Xs = postprocess_images(Xsv, omin=0, omax=1)
 				imgfile = '%s_src.png' % CONF
+				Xs = np.reshape(Xs, (len(Xs), Xs.shape[3], Xs.shape[1], Xs.shape[2]))
 				show_images(Xs, filename=imgfile)
 				
-				Xs_pred = self.convae_model.predict(Xs)
-				Xs_pred = postprocess_images(Xs_pred, omin=-1, omax=1)
+				Xs_pred = self.convae_model.predict(Xsv)
+				Xs_pred = postprocess_images(Xs_pred, omin=0, omax=1)
 				imgfile = '%s_src_pred.png' % CONF
+				Xs_pred = np.reshape(Xs_pred, (len(Xs_pred), Xs_pred.shape[3], Xs_pred.shape[1], Xs_pred.shape[2]))
 				show_images(Xs_pred, filename=imgfile)
 
 	def fit_drcn(self, X, Y, Xu, nb_epoch=50, batch_size=128, shuffle=True,
@@ -385,25 +407,25 @@ class DRCN(object):
 			# visualization 
 			if validation_data is not  None:
 				(X_val, Y_val) = validation_data
-				Xs = X_val[:100]
+				Xsv = X_val[:100]
 
-				Xs = postprocess_images(Xs, omin=0, omax=1)
+				Xs = postprocess_images(Xsv, omin=0, omax=1)
 				imgfile = '%s_src.png' % CONF
 				show_images(Xs, filename=imgfile)
 				
-				Xs_pred = self.convae_model.predict(Xs)
+				Xs_pred = self.convae_model.predict(Xsv)
 				Xs_pred = postprocess_images(Xs_pred, omin=0, omax=1)
 				imgfile = '%s_src_pred.png' % CONF
 				show_images(Xs_pred, filename=imgfile)
 
 			if test_data is not  None:
 				(X_test, Y_test) = test_data
-				Xt = X_test[:100]
-				Xt = postprocess_images(Xt, omin=0, omax=1)
+				Xtv = X_test[:100]
+				Xt = postprocess_images(Xtv, omin=0, omax=1)
 				imgfile = '%s_tgt.png' % CONF
 				show_images(Xt, filename=imgfile)
 				
-				Xt_pred = self.convae_model.predict(Xt)
+				Xt_pred = self.convae_model.predict(Xtv)
 				Xt_pred = postprocess_images(Xt_pred, omin=0, omax=1)
 				imgfile = '%s_tgt_pred.png' % CONF
 				show_images(Xt_pred, filename=imgfile)

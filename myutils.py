@@ -12,6 +12,7 @@ def postprocess_images(V, omin=-1, omax=1):
 	return X
 
 def show_images(Xo, padsize=1, padval=0, filename=None, title=None):
+	# data format : channel_first
 	X = np.copy(Xo)
 	[n, c, d1, d2] = X.shape
 	if c== 1:

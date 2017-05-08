@@ -40,8 +40,8 @@ def load_mnist32x32(dataset = '/local/scratch/gif/dataset/MNIST/mnist32x32.pkl.g
 
 # Load datasets
 print('Load datasets')
-(Xr_train, y_train), (Xr_test, y_test) = load_svhn() # source
-(_, _), (_, _), (Xr_tgt_test, y_tgt_test) = load_mnist32x32() # target
+(Xr_train, y_train), (Xr_test, y_test) = load_svhn(dataset='/local/scratch/gif/dataset/SVHN/svhn_gray.pkl.gz') # source
+(_, _), (_, _), (Xr_tgt_test, y_tgt_test) = load_mnist32x32(dataset='/local/scratch/gif/dataset/MNIST/mnist32x32.pkl.gz') # target
 
 # Convert class vectors to binary class matrices
 nb_classes = 10
@@ -55,11 +55,19 @@ X_test = preprocess_images(Xr_test, tmin=0, tmax=1)
 X_tgt_test = preprocess_images(Xr_tgt_test, tmin=0, tmax=1)
 
 drcn = DRCN()
-input_shape = (X_train.shape[1], X_train.shape[2], X_train.shape[3])
+
+
 
 print('Create Model')
+X_train = np.reshape(X_train, (len(X_train), X_train.shape[2], X_train.shape[3], X_train.shape[1]))
+X_test = np.reshape(X_test, (len(X_test), X_test.shape[2], X_test.shape[3], X_test.shape[1]))
+X_tgt_test = np.reshape(X_tgt_test, (len(X_tgt_test), X_tgt_test.shape[2], X_tgt_test.shape[3], X_tgt_test.shape[1]))
+
+
+input_shape = (X_train.shape[1], X_train.shape[2], X_train.shape[3])
+
 drcn.create_model(input_shape=input_shape, dy=nb_classes, nb_filters=[100, 150, 200], kernel_size=(5, 5), pool_size=(2, 2), 
-		dropout=0.5, output_activation='softmax')
+		dropout=0.25, output_activation='softmax', opt='adam')
 
 # print('Train...')
 # PARAMDIR = ''
@@ -72,10 +80,12 @@ drcn.create_model(input_shape=input_shape, dy=nb_classes, nb_filters=[100, 150, 
 
 print('Train convae...')
 PARAMDIR = ''
-CONF = 'svhn-mnist_drcn'
-# drcn.fit_convae(X_tgt_test, validation_data=X_tgt_test[:100], test_data=X_train[:100], PARAMDIR=PARAMDIR, CONF=CONF)
-drcn.fit_drcn(X_train, Y_train, X_tgt_test, validation_data=(X_test, Y_test), 
-		test_data=(X_tgt_test, Y_tgt_test),
-		PARAMDIR=PARAMDIR, CONF=CONF
-)
+CONF = 'svhn-mnist_convae'
+drcn.fit_convae(X_tgt_test, validation_data=X_tgt_test[:100], test_data=X_train[:100], PARAMDIR=PARAMDIR, CONF=CONF)
+
+# CONF = 'svhn-mnist_drcn'
+# drcn.fit_drcn(X_train, Y_train, X_tgt_test, validation_data=(X_test, Y_test), 
+# 		test_data=(X_tgt_test, Y_tgt_test),
+# 		PARAMDIR=PARAMDIR, CONF=CONF
+# )
 
