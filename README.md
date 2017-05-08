@@ -11,8 +11,8 @@ Muhammad Ghifary (mghifary@gmail.com)
 
 ## Requirements
 * Python 2.7
-* Tensorflow-0.10.0
-* Keras-1.2.0
+* Tensorflow-1.0.1
+* Keras-2.0.0
 * numpy
 * h5py
 
