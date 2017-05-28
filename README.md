@@ -23,10 +23,14 @@ python main_sm.py
 ```
 
 The core algorithm is implemented in __drcn.py__.
+Data augmentation and denoising strategies are included as well.
 
-## Notes
 
+The source to target reconstruction below (SVHN as the source) indicates the successful training of DRCN.
 
-## TO DO
-* Data augmentation and denoising
+```
+python reconstruct_images.py
+```
+
+![alt text](https://github.com/ghif/drcn/rec_src.png "Source to Target Reconstruction")
 

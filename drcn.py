@@ -1,70 +1,113 @@
+"""
+DRCN main class 
+
+Dependency: keras lib
+
+Author: Muhammad Ghifary (mghifary@gmail.com)
+"""
+
 from keras.models import Model
 from keras.layers import Input, Flatten
-from keras.layers.convolutional import Conv2D, MaxPooling2D, AveragePooling2D, Conv2DTranspose, UpSampling2D
+from keras.layers.convolutional import Conv2D, MaxPooling2D, UpSampling2D
 from keras.layers.pooling import MaxPooling2D
 from keras.layers.core import Activation, Dropout, Dense, Reshape
 from keras.layers.normalization import BatchNormalization
-from keras.optimizers import Adam, RMSprop, Nadam
+from keras.optimizers import RMSprop, Adam
+from keras.preprocessing.image import ImageDataGenerator
 
 import os
 import numpy as np
 import time
 
-from myutils import *
+from myutils import * # contains all helpers for DRCN
 
-from keras import backend as K
-
-def iterate_minibatches(inputs, targets, batchsize, shuffle=True):
-	assert len(inputs) == len(targets)
-
-	if shuffle:
-		indices = np.arange(len(inputs))
-		np.random.shuffle(indices)
-
-	for start_idx in range(0, len(inputs), batchsize):
-		end_idx = start_idx + batchsize
-		if end_idx > len(inputs):
-			end_idx = start_idx + (len(inputs) % batchsize)
-
-		if shuffle:
-			excerpt = indices[start_idx:end_idx]
-	
-		else:
-			excerpt = slice(start_idx, end_idx)
-
-		yield inputs[excerpt], targets[excerpt]
-
-def accuracy(Y1, Y2):
-	n = Y1.shape[0]
-	ntrue = np.count_nonzero(np.argmax(Y1, axis=1) == np.argmax(Y2, axis=1))
-	return ntrue * 1.0 / n
-
-def save_weights(model, PARAMDIR, CONF):
-	# model: keras model
-	print(' == save weights == ')
-
-	# save weights
-	PARAMPATH = os.path.join(PARAMDIR, '%s_weights.h5') % CONF
-	model.save(PARAMPATH)
-	
-	# save architecture
-	CONFPATH = os.path.join(PARAMDIR, '%s_conf.json') % CONF
-	archjson = model.to_json()
-
-	open(CONFPATH, 'wb').write(archjson)
-
-
-def clip_relu(x):
-	y = K.maximum(x, 0)
-	return K.minimum(y, 1)
 
 class DRCN(object):
 	def __init__(self, name='svhn-mnist'):
+		"""
+		Class constructor
+		"""
 		self.name = name
 
-	def create_model(self, input_shape=(1, 32, 32), dy=10, nb_filters=[64, 128], kernel_size=(3, 3), pool_size=(2, 2), 
-		dropout=0.5, output_activation='softmax', opt='adam'):
+	def create_convnet(self, _input, dense_dim=1000, dy=10, nb_filters=[64, 128], kernel_size=(3, 3), pool_size=(2, 2), 
+		dropout=0.5, bn=True, output_activation='softmax', opt='adam'):
+
+		"""
+		Create convnet model / encoder of DRCN
+
+		Args:
+			_input (Tensor)    	   : input layer
+			dense_dim (int)            : dimensionality of the final dense layers 
+			dy (int)	   	   : output dimensionality
+			nb_filter (list)   	   : list of #Conv2D filters
+			kernel_size (tuple)	   : Conv2D kernel size
+			pool_size (tuple)  	   : MaxPool kernel size
+			dropout (float)    	   : dropout rate
+			bn (boolean)	   	   : batch normalization mode
+			output_activation (string) : act. function for output layer
+			opt (string)		   : optimizer
 		
+		Store the shared layers into self.enc_functions list
+		"""
+				
+		_h = _input
+
+		self.enc_functions = [] # to store the shared layers, will be used later for constructing conv. autoencoder
+		for i, nf in enumerate(nb_filters):
+			enc_f = Conv2D(nf, kernel_size, padding='same')
+			_h = enc_f(_h)
+			self.enc_functions.append(enc_f)
+			
+			_h = Activation('relu')(_h)
+	
+			if i < 2:
+				_h = MaxPooling2D(pool_size=pool_size, padding='same')(_h)
+
+		_h = Flatten()(_h)		
+		
+		enc_f = Dense(dense_dim)
+		_h = enc_f(_h) 
+		self.enc_functions.append(enc_f)
+		if bn:
+			_h = BatchNormalization()(_h)
+		_h = Activation('relu')(_h)
+		_h = Dropout(dropout)(_h)
+
+		enc_f = Dense(dense_dim)
+		_h = enc_f(_h)
+		self.enc_functions.append(enc_f)
+		if bn:
+			_h = BatchNormalization()(_h)
+		_feat = Activation('relu')(_h)
+		_h = Dropout(dropout)(_feat)
+
+		_y = Dense(dy, activation=output_activation)(_h)
+
+		# convnet
+		self.convnet_model = Model(input=_input, output=_y)
+		self.convnet_model.compile(loss='categorical_crossentropy', optimizer=opt)
+		print(self.convnet_model.summary())
+		
+		self.feat_model = Model(input=_input, output=_feat)
+		
+		
+	def create_model(self, input_shape=(1, 32, 32), dense_dim=1000, dy=10, nb_filters=[64, 128], kernel_size=(3, 3), pool_size=(2, 2), 
+		dropout=0.5, bn=True, output_activation='softmax', opt='adam'):
+		"""
+		Create DRCN model: convnet model followed by conv. autoencoder
+
+		Args:
+			_input (Tensor)    	   : input layer
+			dense_dim (int)            : dimensionality of the final dense layers 
+			dy (int)	   	   : output dimensionality
+			nb_filter (list)   	   : list of #Conv2D filters
+			kernel_size (tuple)	   : Conv2D kernel size
+			pool_size (tuple)  	   : MaxPool kernel size
+			dropout (float)    	   : dropout rate
+			bn (boolean)	   	   : batch normalization mode
+			output_activation (string) : act. function for output layer
+			opt (string)		   : optimizer
+		"""	
 		[d1, d2, c] = input_shape
 
 		if opt == 'adam':
@@ -75,70 +118,252 @@ class DRCN(object):
 
 		_input = Input(shape=input_shape)
 		
-		_h = _input
-		print('input_shape : ', input_shape)
-		print('kernel_size: ', kernel_size)
-		for i, nf in enumerate(nb_filters):
-			_h = Conv2D(nf, kernel_size, padding='same')(_h)
-			_h = BatchNormalization()(_h)
-			_h = Activation('relu')(_h)			
-			_h = Dropout(dropout)(_h)
-			_h = MaxPooling2D(pool_size=pool_size, padding='same')(_h)
-
-		# _h = AveragePooling2D(pool_size=pool_size)(_h)
-		# _h = MaxPooling2D(pool_size=pool_size)(_h)
+		# Create ConvNet
+		self.create_convnet(_input, dense_dim=dense_dim, dy=dy, nb_filters=nb_filters, 
+			kernel_size=kernel_size, pool_size=pool_size, dropout=dropout, 
+			bn=bn, output_activation=output_activation, opt=opt) 
 		
+		# Create ConvAE, encoder functions are shared with ConvNet
+		_h = _input
+		
+		# Reconstruct Conv2D layers
+		for i, nf in enumerate(nb_filters):
+			_h = self.enc_functions[i](_h)
+			_h = Activation('relu')(_h)
+			if i < 2:
+				_h = MaxPooling2D(pool_size=pool_size, padding='same')(_h)
+
+
+		[_, wflat, hflat, cflat] = _h.get_shape().as_list()	
 		_h = Flatten()(_h)
 		
-		_h = Dense(1000)(_h)
-		_h = BatchNormalization()(_h)
-		_feat = Activation('relu')(_h)
-		
-		_h = Dropout(dropout)(_feat)
-
-		_y = Dense(dy, activation=output_activation)(_feat)
-
-		# convnet
-		self.convnet_model = Model(input=_input, output=_y)
-		self.convnet_model.compile(loss='categorical_crossentropy', optimizer=opt)
-
-		# shared features
-		self.feat_model = Model(input=_input, output=_feat)
-
-		print(self.convnet_model.summary())
-
-		# conv autoencoder
-		dim = 4
-		_xdec = Dense(3200, activation='relu')(_feat)
-		# _xdec = Reshape((nb_filters[-1], dim, dim))(_xdec)
-		_xdec = Reshape((dim, dim, nb_filters[-1]))(_xdec)
-		for nf in reversed(nb_filters):
-			# _xdec = Conv2DTranspose(nf, kernel_size, padding='same', subsample=(2, 2))(_xdec)
-			_xdec = Conv2D(nf, kernel_size, padding='same')(_xdec)
+		# Dense layers
+		for i in range(len(nb_filters), len(self.enc_functions)):
+			_h = self.enc_functions[i](_h)
+			_h = Activation('relu')(_h)
 			
-			# _xdec = Convolution2D(nf, kernel_size[0], kernel_size[1], border_mode='same')(_xdec)
-
-			_xdec = BatchNormalization()(_xdec)
+		# Decoder
+		_h = Dense(dense_dim)(_h)
+		_h = Activation('relu')(_h)
+		
+		_xdec = Dense(wflat*hflat*cflat)(_h)
+		_xdec = Activation('relu')(_xdec)
+		_xdec = Reshape((wflat, hflat, nb_filters[-1]))(_xdec)
+		i = 0
+		for nf in reversed(nb_filters):
+			_xdec = Conv2D(nf, kernel_size, padding='same')(_xdec)
 			_xdec = Activation('relu')(_xdec)
-			# _xdec = Dropout(dropout)(_xdec)
-			_xdec = UpSampling2D(size=pool_size)(_xdec)
+			
+			if i > 0:
+				_xdec = UpSampling2D(size=pool_size)(_xdec)	
+			i += 1
+		
+		_xdec = Conv2D(c, kernel_size, padding='same', activation=clip_relu)(_xdec)	
 
-		# _xdec = Deconvolution2D(1, kernel_size[0], kernel_size[1], (None, 1, 32, 32), subsample=(2, 2), border_mode='same', activation='tanh')(_xdec)
-	 	# _xdec = Conv2DTranspose(1, kernel_size, padding='same', activation=clip_relu)(_xdec)
-		_xdec = Conv2D(c, kernel_size, padding='same', activation=clip_relu)(_xdec)
-
-		self.convae_model = Model(input=_input, output=_xdec)
-				
+		self.convae_model = Model(input=_input, output=_xdec)	
 		self.convae_model.compile(loss='mse', optimizer=opt)
-
 		print(self.convae_model.summary())
 	
+	def fit_drcn(self, X, Y, Xu, nb_epoch=50, batch_size=128, shuffle=True,
+			validation_data=None, test_data=None, PARAMDIR=None, CONF=None):
+		"""
+		DRCN algorithm: 	
+			- i) train convnet on labeled source data, ii) train convae on unlabeled target data
+			- include data augmentation and denoising
+		
+		Args:
+			X (np.array)  	  	: [n, d1, d2, c] array of source images
+			Y (np.array)  	  	: [n, dy] array of source labels
+			Xu (np.array) 	  	: [n, d1, d2, c] array of target images
+			nb_epoch (int)	  	: #iteration of gradient descent
+			batch_size (int)  	: # data per batch
+			shuffle (boolean) 	: shuffle the data in a batch if True
+			validation_data (tuple) : tuple of (Xval, Yval) array
+			test_data	  	: tuple of (Xtest, Ytest) array
+			PARAMDIR (string)	: directory to store the learned weights
+			CONF (string)		: for naming purposes
+			
+			
+		"""
+		history = {}
+		history['losses'] = []
+		history['accs'] = []
+		history['gen_losses'] = []
+		history['val_losses'] = []
+		history['val_accs'] = []
+		history['test_losses'] = []
+		history['test_accs'] = []
+		history['elapsed_times'] = []
 
+		best_ep = 1
+		
+		# data augmenter and batch iterator for each convnet and convae
+		ddatagen = ImageDataGenerator(
+			    featurewise_center=False, # set input mean to 0 over the dataset
+			    samplewise_center=False, # set each sample mean to 0
+			    featurewise_std_normalization=False, # divide inputs by std of the dataset
+			    samplewise_std_normalization=False, # divide each input by its std
+			    zca_whitening=False, # apply ZCA whitening
+			    rotation_range=20, # randomly rotate images in the range (degrees, 0 to 180)
+			    width_shift_range=0.2, # randomly shift images horizontally (fraction of total width)
+			    height_shift_range=0.2, # randomly shift images vertically (fraction of total height)
+			    horizontal_flip=False, # randomly flip images
+			    vertical_flip=False
+			) # randomly flip images
+
+		gdatagen = ImageDataGenerator(
+			    featurewise_center=False, # set input mean to 0 over the dataset
+			    samplewise_center=False, # set each sample mean to 0
+			    featurewise_std_normalization=False, # divide inputs by std of the dataset
+			    samplewise_std_normalization=False, # divide each input by its std
+			    zca_whitening=False, # apply ZCA whitening
+			    rotation_range=20, # randomly rotate images in the range (degrees, 0 to 180)
+			    width_shift_range=0.2, # randomly shift images horizontally (fraction of total width)
+			    height_shift_range=0.2, # randomly shift images vertically (fraction of total height)
+			    horizontal_flip=False, # randomly flip images
+			    vertical_flip=False
+			) # randomly flip images
+
+
+		for e in range(nb_epoch):
+			start_t = time.time()
+			# convae training
+			gen_loss = 0.
+			n_batch = 0
+			total_batches = Xu.shape[0] / batch_size
+
+			for Xu_batch, Yu_batch in gdatagen.flow(Xu, np.copy(Xu), batch_size=batch_size, shuffle=shuffle):
+
+				Xu_batch = get_impulse_noise(Xu_batch, 0.5)
+
+				l = self.convae_model.train_on_batch(Xu_batch, Yu_batch)
+				gen_loss += l
+				n_batch += 1
+				
+				if n_batch >= total_batches:
+					break
+			
+			gen_loss /= n_batch
+			history['gen_losses'].append(gen_loss)
+
+			# convnet training
+			loss = 0.
+			n_batch = 0
+			total_batches = X.shape[0] / batch_size 
+
+			for X_batch, Y_batch in ddatagen.flow(X, Y, batch_size=batch_size, shuffle=shuffle):				
+				l = self.convnet_model.train_on_batch(X_batch, Y_batch)
+				loss += l
+				n_batch += 1
+				
+				if n_batch >= total_batches:
+					break
+
+				
+
+			loss /= n_batch
+			history['losses'].append(loss)
+
+			# calculate accuracy
+			acc = accuracy(self.convnet_model.predict(X), Y)
+			history['accs'].append(acc)
+
+						
+			elapsed_t = time.time() - start_t
+			history['elapsed_times'].append(elapsed_t)
+
+						
+			val_loss = -1
+			val_acc = -1
+			best_val_acc = -1
+			if validation_data is not None:
+				(X_val, Y_val) = validation_data
+				val_loss = 0.
+				n_batch = 0
+				for Xv, Yv in iterate_minibatches(X_val, Y_val ,batch_size, shuffle=False):
+					l = self.convnet_model.test_on_batch(Xv, Yv)
+					val_loss += l
+					n_batch += 1
+				val_loss /= n_batch
+				history['val_losses'].append(val_loss)
+				
+				val_acc = accuracy(self.convnet_model.predict(X_val), Y_val)
+				history['val_accs'].append(val_acc)
+			
+			test_loss = -1
+			test_acc = -1
+			if test_data is not None:
+				(X_test, Y_test) = test_data
+				test_loss = 0.
+				n_batch = 0
+				for Xt, Yt in iterate_minibatches(X_test, Y_test, batch_size, shuffle=False):
+					l = self.convnet_model.test_on_batch(Xt, Yt)
+					test_loss += l
+					n_batch += 1
+
+				test_loss /= n_batch
+				history['test_losses'].append(test_loss)
+				
+				test_acc = accuracy(self.convnet_model.predict(X_test), Y_test)
+				history['test_accs'].append(test_acc)
+
+									
+					 
+			print('Epoch-%d: (loss: %.3f, acc: %.3f, gen_loss: %.3f), (val_loss: %.3f, val_acc: %.3f), (test_Loss: %.3f, test_acc: %.3f) -- %.2f sec' % \
+				((e+1), loss, acc, gen_loss, val_loss, val_acc, test_loss, test_acc,  elapsed_t))
+
+			if PARAMDIR is not None:
+				if (acc + val_acc) > best_val_acc:
+					best_val_acc = (acc + val_acc)
+					best_ep = e + 1
+					CONFCNN ='%s_cnn' % CONF
+					save_weights(self.convnet_model, PARAMDIR, CONFCNN)
+
+					CONFCAE = '%s_cae' % CONF
+					save_weights(self.convae_model, PARAMDIR, CONFCAE)
+				else:
+					print('do not save, best val_acc: %.3f at %d' % (best_val_acc, best_ep))
+
+
+			# store history
+			HISTPATH = '%s_hist.npy' % CONF
+			np.save(HISTPATH, history)
+
+			# visualization 
+			if validation_data is not  None:
+				(X_val, Y_val) = validation_data
+				Xsv = X_val[:100]
+
+				Xs = postprocess_images(Xsv, omin=0, omax=1)
+				imgfile = '%s_src.png' % CONF
+				Xs = np.reshape(Xs, (len(Xs), Xs.shape[3], Xs.shape[1], Xs.shape[2]))
+				show_images(Xs, filename=imgfile)
+				
+				Xs_pred = self.convae_model.predict(Xsv)
+				Xs_pred = postprocess_images(Xs_pred, omin=0, omax=1)
+				imgfile = '%s_src_pred.png' % CONF
+				Xs_pred = np.reshape(Xs_pred, (len(Xs_pred), Xs_pred.shape[3], Xs_pred.shape[1], Xs_pred.shape[2]))
+				show_images(Xs_pred, filename=imgfile)
+
+			if test_data is not  None:
+				(X_test, Y_test) = test_data
+				Xtv = X_test[:100]
+				Xt = postprocess_images(Xtv, omin=0, omax=1)
+				imgfile = '%s_tgt.png' % CONF
+				Xt = np.reshape(Xt, (len(Xt), Xt.shape[3], Xt.shape[1], Xt.shape[2]))
+				show_images(Xt, filename=imgfile)
+				
+				Xt_pred = self.convae_model.predict(Xtv)
+				Xt_pred = postprocess_images(Xt_pred, omin=0, omax=1)
+				imgfile = '%s_tgt_pred.png' % CONF
+				Xt_pred = np.reshape(Xt_pred, (len(Xt_pred), Xt_pred.shape[3], Xt_pred.shape[1], Xt_pred.shape[2]))
+				show_images(Xt_pred, filename=imgfile)
+
+
+	###  just in case want to run convnet and convae separately, below are the training modules  ###
 	def fit_convnet(self, X, Y, nb_epoch=50, batch_size=128, shuffle=True,
 			validation_data=None, test_data=None, PARAMDIR=None, CONF=None):
-		
-		
-		
+			
 		history = {}
 		history['losses'] = []
 		history['accs'] = []
@@ -304,129 +529,4 @@ class DRCN(object):
 				Xs_pred = np.reshape(Xs_pred, (len(Xs_pred), Xs_pred.shape[3], Xs_pred.shape[1], Xs_pred.shape[2]))
 				show_images(Xs_pred, filename=imgfile)
 
-	def fit_drcn(self, X, Y, Xu, nb_epoch=50, batch_size=128, shuffle=True,
-			validation_data=None, test_data=None, PARAMDIR=None, CONF=None):
-		history = {}
-		history['losses'] = []
-		history['accs'] = []
-		history['gen_losses'] = []
-		history['val_losses'] = []
-		history['val_accs'] = []
-		history['test_losses'] = []
-		history['test_accs'] = []
-		history['elapsed_times'] = []
-
-		best_ep = 1
-		for e in range(nb_epoch):
-			start_t = time.time()
-			# convae training
-			gen_loss = 0.
-			n_batch = 0
-			for Xu_batch, Yu_batch in iterate_minibatches(Xu, np.copy(Xu), batch_size, shuffle=shuffle):
-				l = self.convae_model.train_on_batch(Xu_batch, Yu_batch)
-				gen_loss += l
-				n_batch += 1
-			
-			gen_loss /= n_batch
-			history['gen_losses'].append(gen_loss)
-
-			# convnet training
-			loss = 0.
-			n_batch = 0
-			
-			for X_batch, Y_batch in iterate_minibatches(X, Y, batch_size, shuffle=shuffle):
-
-				l = self.convnet_model.train_on_batch(X_batch, Y_batch)
-				loss += l
-				n_batch += 1
-
-			loss /= n_batch
-			history['losses'].append(loss)
-
-			# calculate accuracy
-			acc = accuracy(self.convnet_model.predict(X), Y)
-			history['accs'].append(acc)
-
-						
-			elapsed_t = time.time() - start_t
-			history['elapsed_times'].append(elapsed_t)
-
-						
-			val_loss = -1
-			val_acc = -1
-			best_val_acc = -1
-			if validation_data is not None:
-				(X_val, Y_val) = validation_data
-				val_loss = 0.
-				n_batch = 0
-				for Xv, Yv in iterate_minibatches(X_val, Y_val ,batch_size, shuffle=False):
-					l = self.convnet_model.test_on_batch(Xv, Yv)
-					val_loss += l
-					n_batch += 1
-				val_loss /= n_batch
-				history['val_losses'].append(val_loss)
-				
-				val_acc = accuracy(self.convnet_model.predict(X_val), Y_val)
-				history['val_accs'].append(val_acc)
-			
-			test_loss = -1
-			test_acc = -1
-			if test_data is not None:
-				(X_test, Y_test) = test_data
-				test_loss = 0.
-				n_batch = 0
-				for Xt, Yt in iterate_minibatches(X_test, Y_test, batch_size, shuffle=False):
-					l = self.convnet_model.test_on_batch(Xt, Yt)
-					test_loss += l
-					n_batch += 1
-
-				test_loss /= n_batch
-				history['test_losses'].append(test_loss)
-				
-				test_acc = accuracy(self.convnet_model.predict(X_test), Y_test)
-				history['test_accs'].append(test_acc)
-
-									
-					 
-			print('Epoch-%d: (loss: %.3f, acc: %.3f, gen_loss: %.3f), (val_loss: %.3f, val_acc: %.3f), (test_Loss: %.3f, test_acc: %.3f) -- %.2f sec' % \
-				((e+1), loss, acc, gen_loss, val_loss, val_acc, test_loss, test_acc,  elapsed_t))
-
-			if PARAMDIR is not None:
-				if (acc + val_acc) > best_val_acc:
-					best_val_acc = (acc + val_acc)
-					best_ep = e + 1
-					save_weights(self.convnet_model, PARAMDIR, CONF)
-				else:
-					print('do not save, best val_acc: %.3f at %d' % (best_val_acc, best_ep))
-
-
-			# store history
-			HISTPATH = '%s_hist.npy' % CONF
-			np.save(HISTPATH, history)
-
-			# visualization 
-			if validation_data is not  None:
-				(X_val, Y_val) = validation_data
-				Xsv = X_val[:100]
-
-				Xs = postprocess_images(Xsv, omin=0, omax=1)
-				imgfile = '%s_src.png' % CONF
-				show_images(Xs, filename=imgfile)
-				
-				Xs_pred = self.convae_model.predict(Xsv)
-				Xs_pred = postprocess_images(Xs_pred, omin=0, omax=1)
-				imgfile = '%s_src_pred.png' % CONF
-				show_images(Xs_pred, filename=imgfile)
-
-			if test_data is not  None:
-				(X_test, Y_test) = test_data
-				Xtv = X_test[:100]
-				Xt = postprocess_images(Xtv, omin=0, omax=1)
-				imgfile = '%s_tgt.png' % CONF
-				show_images(Xt, filename=imgfile)
-				
-				Xt_pred = self.convae_model.predict(Xtv)
-				Xt_pred = postprocess_images(Xt_pred, omin=0, omax=1)
-				imgfile = '%s_tgt_pred.png' % CONF
-				show_images(Xt_pred, filename=imgfile)
-
+	
