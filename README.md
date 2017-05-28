@@ -34,7 +34,7 @@ python reconstruct_images.py
 
 ![alt text](https://github.com/ghif/drcn/blob/master/rec_src.png "Source to Target Reconstruction")
 
-The classification accuracies of one DRCN run are plotted as follows:
+The classification accuracies of one DRCN run are plotted as follows -- the results may vary due to the randomness:
 
 ```
 python plot_results.py
