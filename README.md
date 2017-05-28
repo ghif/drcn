@@ -32,5 +32,5 @@ The source to target reconstruction below (SVHN as the source) indicates the suc
 python reconstruct_images.py
 ```
 
-![alt text](https://github.com/ghif/drcn/rec_src.png "Source to Target Reconstruction")
+![alt text](https://github.com/ghif/drcn/blob/master/rec_src.png "Source to Target Reconstruction")
 
