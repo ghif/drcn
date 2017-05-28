@@ -25,7 +25,7 @@ python main_sm.py
 The core algorithm is implemented in __drcn.py__.
 Data augmentation and denoising strategies are included as well.
 
-
+## Results
 The source to target reconstruction below (SVHN as the source) indicates the successful training of DRCN.
 
 ```
@@ -33,4 +33,13 @@ python reconstruct_images.py
 ```
 
 ![alt text](https://github.com/ghif/drcn/blob/master/rec_src.png "Source to Target Reconstruction")
+
+The classification accuracies of one DRCN run are plotted as follows:
+
+```
+python plot_results.py
+```
+
+![alt text](https://github.com/ghif/drcn/blob/master/svhn-mnist_plot.png "Accuracy Plot")
+
 
